@@ -327,7 +327,13 @@ app.post('/webhook', async (req, res) => {
                         const id = putGeneratedImage(buffer, contentType || 'image/png');
                         const base = PUBLIC_BASE_URL;
                         if (!/^https:\/\//i.test(base)) {
-                            console.warn('PUBLIC_BASE_URL is not HTTPS. LINE may reject image URLs:', base);
+                            console.warn('PUBLIC_BASE_URL is not HTTPS. LINE will reject image URLs:', base);
+                            await sendLineMessage(
+                                replyToken,
+                                'ไม่สามารถส่งรูปได้ เนื่องจาก PUBLIC_BASE_URL ไม่ใช่ HTTPS หรือเข้าถึงไม่ได้จากภายนอก\n' +
+                                'โปรดตั้งค่า PUBLIC_BASE_URL เป็นโดเมนที่เป็น HTTPS (เช่น https://<โดเมนคุณ> หรือ ngrok https) แล้วรีสตาร์ตเซิร์ฟเวอร์'
+                            );
+                            continue;
                         }
                         const url = `${base}/generated/${id}`;
                         await sendLineMessages(replyToken, [{
