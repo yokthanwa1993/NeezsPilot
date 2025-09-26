@@ -297,8 +297,6 @@ app.post('/webhook', async (req, res) => {
             if (event.type === 'message' && event.message.type === 'text') {
                 const userMessage = event.message.text;
                 const replyToken = event.replyToken;
-                
-                console.log('Received message:', userMessage);
                 const sourceType = event.source?.type;
                 const inGroupLike = sourceType === 'group' || sourceType === 'room';
                 
@@ -311,6 +309,7 @@ app.post('/webhook', async (req, res) => {
                 // In groups/rooms: respond only when slash command or explicit mention
                 if (inGroupLike && !(isSlashCommand || isExplicitMention)) continue;
                 if (/^\/mcp(\s|$)/i.test(textNorm)) {
+                    console.log('Handling /mcp command');
                     try {
                         const mcp = await import('./mcp/client.mjs');
                         const status = await mcp.getMcpStatus();
@@ -340,6 +339,7 @@ app.post('/webhook', async (req, res) => {
                 // Image generation command: /image <prompt>
                 const imageMatch = textNorm.match(/^\/image\s+(.+)/i);
                 if (imageMatch) {
+                    console.log('Handling /image command');
                     const prompt = imageMatch[1].trim();
                     if (!prompt) {
                         await sendLineMessage(replyToken, 'โปรดพิมพ์ /image ตามด้วยคำอธิบายรูปภาพที่ต้องการ');
@@ -371,6 +371,7 @@ app.post('/webhook', async (req, res) => {
                 }
 
                 // Send to Gemini (in group: use normalized text to remove @mention prefix)
+                console.log('Handling chat message');
                 const geminiInput = inGroupLike ? textNorm : userMessage;
                 const geminiResponse = await sendToGemini(geminiInput);
                 
