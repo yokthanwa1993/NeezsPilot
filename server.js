@@ -304,11 +304,12 @@ app.post('/webhook', async (req, res) => {
                 
                 // Commands (no Gemini call)
                 const textNorm = normalizeTextForCommands(userMessage);
-                
-                // In groups/rooms: only respond to explicit commands (/mcp, /image). Ignore everything else.
-                if (inGroupLike && !/^\/(mcp|image)(\s|$)/i.test(textNorm)) {
-                    continue;
-                }
+                const isSlashCommand = /^\/(mcp|image)(\s|$)/i.test(textNorm);
+                const hasMentionMeta = Array.isArray(event.message?.mention?.mentionees) && event.message.mention.mentionees.length > 0;
+                const startsWithAt = (userMessage || '').trim().startsWith('@');
+                const isExplicitMention = hasMentionMeta || startsWithAt;
+                // In groups/rooms: respond only when slash command or explicit mention
+                if (inGroupLike && !(isSlashCommand || isExplicitMention)) continue;
                 if (/^\/mcp(\s|$)/i.test(textNorm)) {
                     try {
                         const mcp = await import('./mcp/client.mjs');
@@ -368,9 +369,10 @@ app.post('/webhook', async (req, res) => {
                     }
                     continue;
                 }
-                
-                // Send to Gemini (only in 1:1 chats or when not filtered by group gating)
-                const geminiResponse = await sendToGemini(userMessage);
+
+                // Send to Gemini (in group: use normalized text to remove @mention prefix)
+                const geminiInput = inGroupLike ? textNorm : userMessage;
+                const geminiResponse = await sendToGemini(geminiInput);
                 
                 // Send response back to LINE
                 await sendLineMessage(replyToken, geminiResponse);
