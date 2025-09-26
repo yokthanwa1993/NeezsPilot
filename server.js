@@ -473,6 +473,66 @@ app.post('/webhook', async (req, res) => {
                     continue;
                 }
 
+                // Drive list spreadsheets: /drive list [<keyword>]
+                const driveListMatch = textNorm.match(/^\/drive\s+list(?:\s+(.+))?/i);
+                if (driveListMatch) {
+                    try {
+                        const q = driveListMatch[1]?.trim();
+                        const { files = [] } = await (await import('./mcp/sheets-client.mjs')).driveListSpreadsheets({
+                            query: q ? `name contains '${q.replace(/'/g, "\\'")}'` : undefined,
+                            pageSize: 10,
+                        });
+                        if (!files.length) {
+                            await sendLineMessage(replyToken, 'ไม่พบไฟล์สเปรดชีตใน Google Drive ที่เข้าถึงได้');
+                        } else {
+                            let msg = 'รายการสเปรดชีตล่าสุด:\n';
+                            files.forEach((f, i) => {
+                                msg += `${i + 1}. ${f.name} (id: ${f.id})\n   ${f.webViewLink || ''}\n`;
+                            });
+                            await sendLineMessage(replyToken, msg);
+                        }
+                    } catch (e) {
+                        await sendLineMessage(replyToken, `Drive list error: ${e?.message || String(e)}`);
+                    }
+                    continue;
+                }
+
+                // /sheet tabs <spreadsheetId>
+                const sheetTabsMatch = textNorm.match(/^\/sheet\s+tabs\s+(\S+)/i);
+                if (sheetTabsMatch) {
+                    const spreadsheetId = sheetTabsMatch[1];
+                    try {
+                        const tabs = await (await import('./mcp/sheets-client.mjs')).sheetsListTabs(spreadsheetId);
+                        if (!tabs.length) {
+                            await sendLineMessage(replyToken, 'ไม่พบชีตในสเปรดชีตนี้');
+                        } else {
+                            let msg = `ชีตในสเปรดชีต ${spreadsheetId}:\n`;
+                            tabs.forEach((s, i) => { msg += `${i + 1}. ${s.title}\n`; });
+                            await sendLineMessage(replyToken, msg);
+                        }
+                    } catch (e) {
+                        await sendLineMessage(replyToken, `Tabs error: ${e?.message || String(e)}`);
+                    }
+                    continue;
+                }
+
+                // /sheet preview <spreadsheetId> <sheetName>
+                const sheetPrevMatch = textNorm.match(/^\/sheet\s+preview\s+(\S+)\s+(.+)/i);
+                if (sheetPrevMatch) {
+                    const spreadsheetId = sheetPrevMatch[1];
+                    const sheetName = sheetPrevMatch[2];
+                    try {
+                        const { headers = [], rows = [] } = await (await import('./mcp/sheets-client.mjs')).sheetsPreview(spreadsheetId, sheetName, { maxCols: 10, maxRows: 5 });
+                        let msg = 'พรีวิวข้อมูล:\n';
+                        if (headers.length) msg += headers.join(' | ') + '\n';
+                        rows.forEach(r => { msg += (r || []).join(' | ') + '\n'; });
+                        await sendLineMessage(replyToken, msg.trim());
+                    } catch (e) {
+                        await sendLineMessage(replyToken, `Preview error: ${e?.message || String(e)}`);
+                    }
+                    continue;
+                }
+
                 // Send to Gemini (in group: use normalized text to remove @mention prefix)
                 console.log('Handling chat message');
                 const geminiInput = inGroupLike ? textNorm : userMessage;

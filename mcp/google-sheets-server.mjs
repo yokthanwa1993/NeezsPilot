@@ -21,9 +21,27 @@ function getSheetsClient() {
   const auth = new google.auth.JWT({
     email: clientEmail,
     key: privateKey,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    scopes: [
+      'https://www.googleapis.com/auth/spreadsheets.readonly',
+      'https://www.googleapis.com/auth/drive.readonly',
+    ],
   });
   return google.sheets({ version: 'v4', auth });
+}
+
+function getDriveClient() {
+  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+  let privateKey = process.env.GOOGLE_PRIVATE_KEY || '';
+  if (privateKey.includes('\\n')) privateKey = privateKey.replace(/\\n/g, '\n');
+  if (!clientEmail || !privateKey) {
+    throw new Error('Missing GOOGLE_CLIENT_EMAIL or GOOGLE_PRIVATE_KEY');
+  }
+  const auth = new google.auth.JWT({
+    email: clientEmail,
+    key: privateKey,
+    scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+  });
+  return google.drive({ version: 'v3', auth });
 }
 
 const server = new McpServer({ name: 'GoogleSheetsMCP', version: '0.1.0' });
@@ -57,6 +75,106 @@ server.registerTool(
         content: [{ type: 'text', text: `Sheets API error: ${err.message || String(err)}` }],
         isError: true,
       };
+    }
+  }
+);
+
+// Tool: drive.listSpreadsheets
+server.registerTool(
+  'drive.listSpreadsheets',
+  {
+    title: 'List Google Drive Spreadsheets',
+    description: 'List spreadsheets in Google Drive accessible by the service account.',
+    inputSchema: {
+      query: z.string().optional(), // Drive API query
+      pageSize: z.number().int().min(1).max(100).default(10),
+      pageToken: z.string().optional(),
+    },
+    outputSchema: {
+      files: z.array(z.object({
+        id: z.string(),
+        name: z.string(),
+        modifiedTime: z.string().optional(),
+        webViewLink: z.string().optional(),
+        owners: z.array(z.object({ displayName: z.string().optional(), emailAddress: z.string().optional() })).optional(),
+      })),
+      nextPageToken: z.string().optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ query, pageSize = 10, pageToken }) => {
+    try {
+      const drive = getDriveClient();
+      const q = ["mimeType='application/vnd.google-apps.spreadsheet'", query].filter(Boolean).join(' and ');
+      const res = await drive.files.list({
+        q,
+        pageSize,
+        pageToken,
+        fields: 'nextPageToken, files(id, name, modifiedTime, webViewLink, owners(displayName, emailAddress))',
+        orderBy: 'modifiedTime desc',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+      return { content: [], structuredContent: { files: res.data.files || [], nextPageToken: res.data.nextPageToken } };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Drive list error: ${err.message || String(err)}` }], isError: true };
+    }
+  }
+);
+
+// Tool: sheets.listTabs
+server.registerTool(
+  'sheets.listTabs',
+  {
+    title: 'List tabs (sheets) in spreadsheet',
+    description: 'List sheet titles within a spreadsheet',
+    inputSchema: { spreadsheetId: z.string() },
+    outputSchema: { sheets: z.array(z.object({ sheetId: z.number().optional(), title: z.string() })) },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ spreadsheetId }) => {
+    try {
+      const sheets = getSheetsClient();
+      const res = await sheets.spreadsheets.get({ spreadsheetId });
+      const list = (res.data.sheets || []).map(s => ({ sheetId: s.properties?.sheetId, title: s.properties?.title || '' }));
+      return { content: [], structuredContent: { sheets: list } };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Sheets listTabs error: ${err.message || String(err)}` }], isError: true };
+    }
+  }
+);
+
+// Tool: sheets.preview
+server.registerTool(
+  'sheets.preview',
+  {
+    title: 'Preview top rows in a sheet',
+    description: 'Return first N rows from a sheet for preview',
+    inputSchema: {
+      spreadsheetId: z.string(),
+      sheetName: z.string(),
+      maxCols: z.number().int().min(1).max(26).default(10),
+      maxRows: z.number().int().min(1).max(50).default(5),
+      headerRow: z.number().int().default(1),
+    },
+    outputSchema: {
+      headers: z.array(z.string()).optional(),
+      rows: z.array(z.array(z.string().nullable())).optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  async ({ spreadsheetId, sheetName, maxCols = 10, maxRows = 5, headerRow = 1 }) => {
+    try {
+      const sheets = getSheetsClient();
+      const endCol = String.fromCharCode('A'.charCodeAt(0) + maxCols - 1);
+      const range = `${sheetName}!A${headerRow}:${endCol}${headerRow + maxRows}`;
+      const res = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+      const values = res.data.values || [];
+      const headers = values[0] || [];
+      const rows = values.slice(1);
+      return { content: [], structuredContent: { headers, rows } };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Sheets preview error: ${err.message || String(err)}` }], isError: true };
     }
   }
 );
@@ -129,4 +247,3 @@ server.registerTool(
 );
 
 await server.connect(new StdioServerTransport());
-

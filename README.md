@@ -98,6 +98,9 @@ npm run dev
 - การใช้ใน LINE:
   - `/sheet status` ดูสถานะการเชื่อมต่อ MCP ของ Google Sheets
   - `/sheet summary ธันวาคม 2024` หรือ `/sheet summary 2024-12` เพื่อสรุปรายรับ/รายจ่ายของเดือนนั้น
+  - `/drive list [keyword]` แสดงไฟล์สเปรดชีตใน Google Drive (ล่าสุด 10 รายการ)
+  - `/sheet tabs <spreadsheetId>` แสดงชื่อชีตในสเปรดชีต
+  - `/sheet preview <spreadsheetId> <sheetName>` พรีวิวแถวบนสุดของชีต
 
 ## หมายเหตุเรื่องการส่งรูปภาพกลับไปที่ LINE
 - การตอบกลับรูปภาพจำเป็นต้องให้ URL ของไฟล์เป็น HTTPS ที่เข้าถึงได้จากอินเทอร์เน็ต

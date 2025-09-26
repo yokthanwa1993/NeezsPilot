@@ -83,3 +83,23 @@ export async function closeSheetsMcp() {
   transportInstance = null;
 }
 
+export async function driveListSpreadsheets({ query, pageSize = 10, pageToken } = {}) {
+  const c = await ensureClient();
+  try { await c.listTools(); } catch {}
+  const res = await c.callTool({ name: 'drive.listSpreadsheets', arguments: { query, pageSize, pageToken } });
+  return res.structuredContent;
+}
+
+export async function sheetsListTabs(spreadsheetId) {
+  const c = await ensureClient();
+  try { await c.listTools(); } catch {}
+  const res = await c.callTool({ name: 'sheets.listTabs', arguments: { spreadsheetId } });
+  return res.structuredContent?.sheets || [];
+}
+
+export async function sheetsPreview(spreadsheetId, sheetName, opts = {}) {
+  const c = await ensureClient();
+  try { await c.listTools(); } catch {}
+  const res = await c.callTool({ name: 'sheets.preview', arguments: { spreadsheetId, sheetName, ...opts } });
+  return res.structuredContent || {};
+}
