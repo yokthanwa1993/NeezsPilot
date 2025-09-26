@@ -14,6 +14,7 @@ app.use(express.urlencoded({ extended: true }));
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const BRAVE_API_KEY = process.env.BRAVE_API_KEY;
 
 // Verify LINE signature
 function verifySignature(body, signature) {
@@ -45,13 +46,71 @@ async function sendLineMessage(replyToken, message) {
     }
 }
 
+// Search with Brave via MCP (falls back to direct HTTP on failure)
+async function searchWithBrave(query) {
+    // Try MCP first
+    try {
+        const mcp = await import('./mcp/client.mjs');
+        const results = await mcp.braveMcpSearch(query, 5, { mkt: 'th-TH', safesearch: 'moderate' });
+        if (Array.isArray(results) && results.length) return results;
+    } catch (e) {
+        console.error('MCP Brave search failed, falling back. Reason:', e?.message || e);
+    }
+    // Fallback to direct Brave API
+    try {
+        if (!BRAVE_API_KEY) return [];
+        const response = await axios.get('https://api.search.brave.com/res/v1/web/search', {
+            params: {
+                q: query,
+                count: 5,
+                offset: 0,
+                mkt: 'th-TH',
+                safesearch: 'moderate'
+            },
+            headers: {
+                'Accept': 'application/json',
+                'Accept-Encoding': 'gzip',
+                'X-Subscription-Token': BRAVE_API_KEY
+            }
+        });
+        const results = response.data.web?.results || [];
+        return results.map(result => ({
+            title: result.title,
+            url: result.url,
+            description: result.description
+        }));
+    } catch (error) {
+        console.error('Error calling Brave Search API (fallback):', error.response?.data || error.message);
+        return [];
+    }
+}
+
 // Send message to Gemini
 async function sendToGemini(userMessage) {
     try {
+        // Check if user is asking for current information or search
+        const searchKeywords = ['ข่าว', 'news', 'ล่าสุด', 'ปัจจุบัน', 'วันนี้', 'เมื่อไหร่', 'ที่ไหน', 'อย่างไร', 'ราคา', 'อัตรา', 'ค่าเงิน'];
+        const needsSearch = searchKeywords.some(keyword => userMessage.includes(keyword));
+        
+        let searchResults = '';
+        if (needsSearch) {
+            const results = await searchWithBrave(userMessage);
+            if (results.length > 0) {
+                searchResults = '\n\nข้อมูลล่าสุดจาก Brave Search:\n';
+                results.forEach((result, index) => {
+                    searchResults += `${index + 1}. ${result.title}\n   ${result.description}\n   ${result.url}\n\n`;
+                });
+            }
+        }
+
+        const prompt = `คุณเป็นผู้ช่วย AI ที่เป็นมิตรและช่วยเหลือผู้ใช้ ตอบคำถามเป็นภาษาไทย${searchResults}
+
+คำถาม: ${userMessage}`;
+
         const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`, {
             contents: [{
                 parts: [{
-                    text: `คุณเป็นผู้ช่วย AI ที่เป็นมิตรและช่วยเหลือผู้ใช้ ตอบคำถามเป็นภาษาไทย\n\nคำถาม: ${userMessage}`
+                    text: prompt
                 }]
             }],
             generationConfig: {
