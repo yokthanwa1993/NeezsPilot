@@ -25,14 +25,32 @@ function verifySignature(body, signature) {
     return hash === signature;
 }
 
+function sanitizeForLine(text) {
+    try {
+        let t = String(text ?? '');
+        // Normalize line breaks
+        t = t.replace(/\r\n?/g, '\n');
+        // Trim trailing spaces on each line
+        t = t.replace(/[ \t]+$/gm, '');
+        // Collapse 3+ blank lines to 2
+        t = t.replace(/\n{3,}/g, '\n\n');
+        // Remove trailing blank lines
+        t = t.replace(/\n+$/g, '');
+        return t;
+    } catch (_) {
+        return String(text ?? '');
+    }
+}
+
 // Send message to LINE
 async function sendLineMessage(replyToken, message) {
     try {
+        const text = sanitizeForLine(message);
         const response = await axios.post('https://api.line.me/v2/bot/message/reply', {
             replyToken: replyToken,
             messages: [{
                 type: 'text',
-                text: message
+                text
             }]
         }, {
             headers: {
