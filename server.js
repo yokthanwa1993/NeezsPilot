@@ -153,6 +153,34 @@ app.post('/webhook', async (req, res) => {
                 
                 console.log('Received message:', userMessage);
                 
+                // MCP status command
+                if (userMessage.trim().toLowerCase() === '/mcp') {
+                    try {
+                        const mcp = await import('./mcp/client.mjs');
+                        const status = await mcp.getMcpStatus();
+                        let msg = `MCP Status: ${status.connected ? 'connected' : 'disconnected'}`;
+                        if (status.connected) {
+                            const info = status.serverInfo || {};
+                            const name = info.name || 'unknown';
+                            const ver = info.version || 'unknown';
+                            const pid = status.pid ? ` (pid ${status.pid})` : '';
+                            msg += `\nServer: ${name} v${ver}${pid}`;
+                            if (status.tools?.length) {
+                                msg += `\nTools:`;
+                                for (const t of status.tools) {
+                                    msg += `\n- ${t.name}${t.title && t.title !== t.name ? ` (${t.title})` : ''}`;
+                                }
+                            } else {
+                                msg += `\nTools: (none)`;
+                            }
+                        }
+                        await sendLineMessage(replyToken, msg);
+                    } catch (e) {
+                        await sendLineMessage(replyToken, `MCP status error: ${e?.message || String(e)}`);
+                    }
+                    continue;
+                }
+                
                 // Send to Gemini
                 const geminiResponse = await sendToGemini(userMessage);
                 

@@ -104,3 +104,21 @@ export async function closeMcp() {
   clientInstance = null;
   transportInstance = null;
 }
+
+export async function getMcpStatus() {
+  const status = {
+    connected: !!clientInstance,
+    pid: transportInstance?.pid ?? null,
+    serverInfo: null,
+    tools: [],
+  };
+  if (!clientInstance) return status;
+  try {
+    status.serverInfo = clientInstance.getServerVersion?.() ?? null;
+  } catch (_) {}
+  try {
+    const res = await clientInstance.listTools();
+    status.tools = (res.tools || []).map(t => ({ name: t.name, title: t.title || t.name }));
+  } catch (_) {}
+  return status;
+}
