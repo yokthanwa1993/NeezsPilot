@@ -15,6 +15,7 @@ const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const BRAVE_API_KEY = process.env.BRAVE_API_KEY;
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
 
 // Verify LINE signature
 function verifySignature(body, signature) {
@@ -64,6 +65,24 @@ async function sendLineMessage(replyToken, message) {
     }
 }
 
+// Send arbitrary LINE messages (array of message objects)
+async function sendLineMessages(replyToken, messages) {
+    try {
+        const response = await axios.post('https://api.line.me/v2/bot/message/reply', {
+            replyToken,
+            messages,
+        }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`
+            }
+        });
+        console.log('LINE messages sent successfully');
+    } catch (error) {
+        console.error('Error sending LINE messages:', error.response?.data || error.message);
+    }
+}
+
 // Download message content from LINE (image, etc.)
 async function getLineMessageContent(messageId) {
     const url = `https://api-data.line.me/v2/bot/message/${messageId}/content`;
@@ -105,6 +124,59 @@ async function sendImageToGemini(imageBuffer, contentType, userHintText = '') {
         return 'ขออภัย เกิดข้อผิดพลาดในการวิเคราะห์รูปภาพ';
     }
 }
+
+// Generate an image using Gemini, return Buffer and contentType
+async function generateImageWithGemini(prompt) {
+    try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+        const body = {
+            contents: [{ parts: [{ text: prompt }]}],
+            generationConfig: {
+                // Ask Gemini to return an image
+                responseMimeType: 'image/png'
+            }
+        };
+        const response = await axios.post(url, body, { headers: { 'Content-Type': 'application/json' } });
+        const parts = response.data?.candidates?.[0]?.content?.parts || [];
+        const img = parts.find(p => p.inlineData?.data && (p.inlineData?.mimeType?.startsWith('image/') || true));
+        if (!img) throw new Error('No image data returned');
+        const data = img.inlineData.data;
+        const mimeType = img.inlineData.mimeType || 'image/png';
+        const buffer = Buffer.from(data, 'base64');
+        return { buffer, contentType: mimeType };
+    } catch (error) {
+        console.error('Error generating image with Gemini:', error.response?.data || error.message);
+        throw new Error('ไม่สามารถสร้างรูปภาพได้ โปรดตรวจสอบสิทธิ์ของ API และโมเดล');
+    }
+}
+
+// In-memory store for generated images
+const generatedImages = new Map(); // id -> { buffer, contentType, expiresAt }
+const IMAGE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function putGeneratedImage(buffer, contentType) {
+    const id = crypto.randomBytes(16).toString('hex');
+    const expiresAt = Date.now() + IMAGE_TTL_MS;
+    generatedImages.set(id, { buffer, contentType, expiresAt });
+    return id;
+}
+
+function cleanupGeneratedImages() {
+    const now = Date.now();
+    for (const [id, v] of generatedImages.entries()) {
+        if (v.expiresAt <= now) generatedImages.delete(id);
+    }
+}
+
+// Serve generated images
+app.get('/generated/:id', (req, res) => {
+    cleanupGeneratedImages();
+    const rec = generatedImages.get(req.params.id);
+    if (!rec) return res.status(404).send('Not found');
+    res.set('Content-Type', rec.contentType || 'image/png');
+    res.set('Cache-Control', 'public, max-age=300');
+    res.send(rec.buffer);
+});
 
 // Search with Brave via MCP (falls back to direct HTTP on failure)
 async function searchWithBrave(query) {
@@ -213,9 +285,9 @@ app.post('/webhook', async (req, res) => {
                 
                 console.log('Received message:', userMessage);
                 
-                // MCP status command (no Gemini call)
-                const textNorm = (userMessage || '').trim().toLowerCase();
-                if (textNorm === '/mcp' || textNorm.startsWith('/mcp ')) {
+                // Commands (no Gemini call)
+                const textNorm = (userMessage || '').trim();
+                if (/^\/mcp(\s|$)/i.test(textNorm)) {
                     try {
                         const mcp = await import('./mcp/client.mjs');
                         const status = await mcp.getMcpStatus();
@@ -238,6 +310,33 @@ app.post('/webhook', async (req, res) => {
                         await sendLineMessage(replyToken, msg);
                     } catch (e) {
                         await sendLineMessage(replyToken, `MCP status error: ${e?.message || String(e)}`);
+                    }
+                    continue;
+                }
+
+                // Image generation command: /image <prompt>
+                const imageMatch = textNorm.match(/^\/image\s+(.+)/i);
+                if (imageMatch) {
+                    const prompt = imageMatch[1].trim();
+                    if (!prompt) {
+                        await sendLineMessage(replyToken, 'โปรดพิมพ์ /image ตามด้วยคำอธิบายรูปภาพที่ต้องการ');
+                        continue;
+                    }
+                    try {
+                        const { buffer, contentType } = await generateImageWithGemini(prompt);
+                        const id = putGeneratedImage(buffer, contentType || 'image/png');
+                        const base = PUBLIC_BASE_URL;
+                        if (!/^https:\/\//i.test(base)) {
+                            console.warn('PUBLIC_BASE_URL is not HTTPS. LINE may reject image URLs:', base);
+                        }
+                        const url = `${base}/generated/${id}`;
+                        await sendLineMessages(replyToken, [{
+                            type: 'image',
+                            originalContentUrl: url,
+                            previewImageUrl: url,
+                        }]);
+                    } catch (e) {
+                        await sendLineMessage(replyToken, e.message || 'ไม่สามารถสร้างรูปภาพได้');
                     }
                     continue;
                 }
