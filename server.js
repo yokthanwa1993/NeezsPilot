@@ -299,9 +299,16 @@ app.post('/webhook', async (req, res) => {
                 const replyToken = event.replyToken;
                 
                 console.log('Received message:', userMessage);
+                const sourceType = event.source?.type;
+                const inGroupLike = sourceType === 'group' || sourceType === 'room';
                 
                 // Commands (no Gemini call)
                 const textNorm = normalizeTextForCommands(userMessage);
+                
+                // In groups/rooms: only respond to explicit commands (/mcp, /image). Ignore everything else.
+                if (inGroupLike && !/^\/(mcp|image)(\s|$)/i.test(textNorm)) {
+                    continue;
+                }
                 if (/^\/mcp(\s|$)/i.test(textNorm)) {
                     try {
                         const mcp = await import('./mcp/client.mjs');
@@ -362,13 +369,19 @@ app.post('/webhook', async (req, res) => {
                     continue;
                 }
                 
-                // Send to Gemini
+                // Send to Gemini (only in 1:1 chats or when not filtered by group gating)
                 const geminiResponse = await sendToGemini(userMessage);
                 
                 // Send response back to LINE
                 await sendLineMessage(replyToken, geminiResponse);
             } else if (event.type === 'message' && event.message.type === 'image') {
                 const replyToken = event.replyToken;
+                const sourceType = event.source?.type;
+                const inGroupLike = sourceType === 'group' || sourceType === 'room';
+                if (inGroupLike) {
+                    // Ignore random images in groups to avoid spam
+                    continue;
+                }
                 try {
                     const { buffer, contentType } = await getLineMessageContent(event.message.id);
                     const geminiResponse = await sendImageToGemini(buffer, contentType, '');
