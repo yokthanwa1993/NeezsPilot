@@ -125,20 +125,20 @@ async function sendImageToGemini(imageBuffer, contentType, userHintText = '') {
     }
 }
 
-// Generate an image using Gemini, return Buffer and contentType
+// Generate an image using Gemini 2.5 Flash Image Preview, return Buffer and contentType
 async function generateImageWithGemini(prompt) {
     try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent';
         const body = {
             contents: [{ parts: [{ text: prompt }]}],
-            generationConfig: {
-                // Ask Gemini to return an image
-                responseMimeType: 'image/png'
-            }
         };
-        const response = await axios.post(url, body, { headers: { 'Content-Type': 'application/json' } });
+        const headers = {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': GEMINI_API_KEY,
+        };
+        const response = await axios.post(url, body, { headers });
         const parts = response.data?.candidates?.[0]?.content?.parts || [];
-        const img = parts.find(p => p.inlineData?.data && (p.inlineData?.mimeType?.startsWith('image/') || true));
+        const img = parts.find(p => p.inlineData?.data && (p.inlineData?.mimeType?.startsWith?.('image/') || true));
         if (!img) throw new Error('No image data returned');
         const data = img.inlineData.data;
         const mimeType = img.inlineData.mimeType || 'image/png';
