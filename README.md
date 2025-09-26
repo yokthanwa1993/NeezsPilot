@@ -1,4 +1,4 @@
-# LINE Bot with Gemini 2.5 Flash + Brave Search (via MCP)
+# LINE Bot with Gemini 2.5 Flash + Brave Search (via MCP) + Image
 
 ## Environment Variables
 
@@ -53,13 +53,14 @@ npm run dev
 1. รันเซิร์ฟเวอร์: `npm start`
 2. ใช้ ngrok หรือ tunnel service เพื่อเปิด webhook URL
 3. ตั้งค่า webhook URL ใน LINE Developer Console
-4. ทดสอบส่งข้อความใน LINE
+4. ทดสอบส่งข้อความใน LINE และลองส่งรูปภาพเพื่อให้บอทวิเคราะห์
 
 ## ฟีเจอร์
 
 - รับข้อความจาก LINE
 - ส่งข้อความไปยัง Gemini 2.5 Flash
 - เชื่อมต่อกับ Brave Search API สำหรับข้อมูลล่าสุด (ผ่าน MCP)
+- วิเคราะห์รูปภาพด้วย Gemini 2.5 Flash Image: ส่งรูปในแชทเพื่อให้บอทอธิบายหรือสรุปเนื้อหาในภาพ
 - ตอบกลับข้อความที่ประมวลผลแล้ว
 - รองรับการตรวจสอบลายเซ็นดิจิทัล
 - มี health check endpoint

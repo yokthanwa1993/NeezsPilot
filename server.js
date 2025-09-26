@@ -64,6 +64,48 @@ async function sendLineMessage(replyToken, message) {
     }
 }
 
+// Download message content from LINE (image, etc.)
+async function getLineMessageContent(messageId) {
+    const url = `https://api-data.line.me/v2/bot/message/${messageId}/content`;
+    const resp = await axios.get(url, {
+        responseType: 'arraybuffer',
+        headers: {
+            'Authorization': `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`
+        }
+    });
+    return { buffer: Buffer.from(resp.data), contentType: resp.headers['content-type'] || 'application/octet-stream' };
+}
+
+// Send image to Gemini (image understanding)
+async function sendImageToGemini(imageBuffer, contentType, userHintText = '') {
+    try {
+        const base64 = imageBuffer.toString('base64');
+        const promptPrefix = userHintText && userHintText.trim().length > 0
+            ? `โปรดตอบเป็นภาษาไทย โดยพิจารณาตามคำสั่งผู้ใช้: ${userHintText}\n\n`
+            : 'โปรดอธิบายรูปนี้เป็นภาษาไทยอย่างกระชับ และแยกประเด็นที่สำคัญ\n\n';
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+        const body = {
+            contents: [{
+                parts: [
+                    { text: promptPrefix },
+                    { inlineData: { mimeType: contentType || 'image/jpeg', data: base64 } }
+                ]
+            }],
+            generationConfig: {
+                temperature: 0.4,
+                maxOutputTokens: 800,
+                topP: 0.8,
+                topK: 32
+            }
+        };
+        const response = await axios.post(url, body, { headers: { 'Content-Type': 'application/json' } });
+        return response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'ขออภัย ไม่สามารถวิเคราะห์รูปนี้ได้';
+    } catch (error) {
+        console.error('Error calling Gemini Image API:', error.response?.data || error.message);
+        return 'ขออภัย เกิดข้อผิดพลาดในการวิเคราะห์รูปภาพ';
+    }
+}
+
 // Search with Brave via MCP (falls back to direct HTTP on failure)
 async function searchWithBrave(query) {
     // Try MCP first
@@ -205,6 +247,16 @@ app.post('/webhook', async (req, res) => {
                 
                 // Send response back to LINE
                 await sendLineMessage(replyToken, geminiResponse);
+            } else if (event.type === 'message' && event.message.type === 'image') {
+                const replyToken = event.replyToken;
+                try {
+                    const { buffer, contentType } = await getLineMessageContent(event.message.id);
+                    const geminiResponse = await sendImageToGemini(buffer, contentType, '');
+                    await sendLineMessage(replyToken, geminiResponse);
+                } catch (e) {
+                    console.error('Image handling error:', e.response?.data || e.message);
+                    await sendLineMessage(replyToken, 'ขออภัย ไม่สามารถดาวน์โหลด/วิเคราะห์รูปภาพได้');
+                }
             }
         }
 
