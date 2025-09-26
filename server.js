@@ -16,6 +16,11 @@ const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const BRAVE_API_KEY = process.env.BRAVE_API_KEY;
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
+const DEFAULT_SHEETS_SPREADSHEET_ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || '';
+const DEFAULT_SHEETS_NAME = process.env.GOOGLE_SHEETS_SHEET_NAME || 'Sheet1';
+const DEFAULT_SHEETS_DATE_COL = process.env.GOOGLE_SHEETS_DATE_COL || 'A';
+const DEFAULT_SHEETS_TYPE_COL = process.env.GOOGLE_SHEETS_TYPE_COL || 'B';
+const DEFAULT_SHEETS_AMOUNT_COL = process.env.GOOGLE_SHEETS_AMOUNT_COL || 'C';
 
 // Verify LINE signature
 function verifySignature(body, signature) {
@@ -193,6 +198,46 @@ app.get('/generated/:id', (req, res) => {
     res.send(rec.buffer);
 });
 
+// Helpers: Thai month parsing and number formatting
+function toThaiMonth(m) {
+    const th = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+    return th[m-1] || `${m}`;
+}
+function parseMonthYear(text) {
+    const t = (text || '').trim().toLowerCase();
+    const th = {
+        'มกราคม':1,'กุมภาพันธ์':2,'มีนาคม':3,'เมษายน':4,'พฤษภาคม':5,'มิถุนายน':6,
+        'กรกฎาคม':7,'สิงหาคม':8,'กันยายน':9,'ตุลาคม':10,'พฤศจิกายน':11,'ธันวาคม':12,
+        'ม.ค.':1,'ก.พ.':2,'มี.ค.':3,'เม.ย.':4,'พ.ค.':5,'มิ.ย.':6,'ก.ค.':7,'ส.ค.':8,'ก.ย.':9,'ต.ค.':10,'พ.ย.':11,'ธ.ค.':12
+    };
+    const en = {
+        'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,'july':7,'august':8,'september':9,'october':10,'november':11,'december':12,
+        'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,'jul':7,'aug':8,'sep':9,'sept':9,'oct':10,'nov':11,'dec':12
+    };
+    // 1) yyyy-mm or yyyy/mm
+    let m = t.match(/(20\d{2}|19\d{2})[-\/](\d{1,2})/);
+    if (m) {
+        const year = parseInt(m[1],10); const month = parseInt(m[2],10);
+        if (month>=1 && month<=12) return { year, month };
+    }
+    // 2) mm/yyyy
+    m = t.match(/(\d{1,2})[-\/]?(\s*)(20\d{2}|19\d{2})/);
+    if (m && parseInt(m[1],10)>=1 && parseInt(m[1],10)<=12) {
+        return { month: parseInt(m[1],10), year: parseInt(m[3],10) };
+    }
+    // 3) thai/en month name + year
+    const parts = t.split(/\s+/);
+    if (parts.length >= 2) {
+        const mm = th[parts[0]] ?? en[parts[0]];
+        const yy = parseInt(parts[1],10);
+        if (mm && yy) return { month: mm, year: yy };
+    }
+    return null;
+}
+function formatNumber(n) {
+    return new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 }).format(n || 0);
+}
+
 // Search with Brave via MCP (falls back to direct HTTP on failure)
 async function searchWithBrave(query) {
     // Try MCP first
@@ -366,6 +411,64 @@ app.post('/webhook', async (req, res) => {
                         }]);
                     } catch (e) {
                         await sendLineMessage(replyToken, e.message || 'ไม่สามารถสร้างรูปภาพได้');
+                    }
+                    continue;
+                }
+
+                // Sheets status command
+                if (/^\/sheet\s+status/i.test(textNorm)) {
+                    try {
+                        const sheets = await import('./mcp/sheets-client.mjs');
+                        const status = await sheets.getSheetsMcpStatus();
+                        let msg = `Sheets MCP: ${status.connected ? 'connected' : 'disconnected'}`;
+                        if (status.connected) {
+                            const info = status.serverInfo || {};
+                            msg += `\nServer: ${info.name || 'unknown'} v${info.version || 'unknown'}`;
+                            if (status.tools?.length) {
+                                msg += `\nTools:`;
+                                for (const t of status.tools) msg += `\n- ${t.name}`;
+                            }
+                        }
+                        await sendLineMessage(replyToken, msg);
+                    } catch (e) {
+                        await sendLineMessage(replyToken, `Sheets MCP status error: ${e?.message || String(e)}`);
+                    }
+                    continue;
+                }
+
+                // Sheets summary command: /sheet summary <month> <year>
+                const sheetSummaryMatch = textNorm.match(/^\/sheet\s+summary\s+(.+)/i);
+                if (sheetSummaryMatch) {
+                    const whenText = sheetSummaryMatch[1].trim();
+                    const { month, year } = parseMonthYear(whenText) || {};
+                    if (!month || !year) {
+                        await sendLineMessage(replyToken, 'โปรดระบุเดือนและปี เช่น /sheet summary ธันวาคม 2024 หรือ /sheet summary 2024-12');
+                        continue;
+                    }
+                    const spreadsheetId = DEFAULT_SHEETS_SPREADSHEET_ID;
+                    if (!spreadsheetId) {
+                        await sendLineMessage(replyToken, 'ยังไม่ได้ตั้งค่า GOOGLE_SHEETS_SPREADSHEET_ID');
+                        continue;
+                    }
+                    try {
+                        const sheets = await import('./mcp/sheets-client.mjs');
+                        const result = await sheets.sheetsSummaryByMonth({
+                            spreadsheetId,
+                            sheetName: DEFAULT_SHEETS_NAME,
+                            dateCol: DEFAULT_SHEETS_DATE_COL,
+                            typeCol: DEFAULT_SHEETS_TYPE_COL,
+                            amountCol: DEFAULT_SHEETS_AMOUNT_COL,
+                            year, month,
+                        });
+                        if (!result) {
+                            await sendLineMessage(replyToken, 'ไม่พบผลสรุป');
+                            continue;
+                        }
+                        const msg = `สรุปรายรับรายจ่าย ${toThaiMonth(month)} ${year}\n` +
+                          `รายรับ: ${formatNumber(result.income)}\nรายจ่าย: ${formatNumber(result.expense)}\nคงเหลือ: ${formatNumber(result.net)}`;
+                        await sendLineMessage(replyToken, msg);
+                    } catch (e) {
+                        await sendLineMessage(replyToken, `Sheets error: ${e?.message || String(e)}`);
                     }
                     continue;
                 }

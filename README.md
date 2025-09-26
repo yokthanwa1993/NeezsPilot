@@ -86,6 +86,19 @@ npm run dev
 - จำเป็นต้องตั้งค่า `BRAVE_API_KEY` ใน environment เพื่อให้ MCP server เข้าถึง Brave API ได้
 - หาก MCP ใช้งานไม่สำเร็จ ระบบจะ fallback ไปเรียก Brave API โดยตรงเพื่อความเสถียร
 
+## MCP Integration (Google Sheets)
+
+- เพิ่ม MCP server สำหรับ Google Sheets ที่ `mcp/google-sheets-server.mjs`
+- เพิ่ม client ที่ `mcp/sheets-client.mjs`
+- ตั้งค่า Environment Variables:
+  - `GOOGLE_CLIENT_EMAIL` (Service Account)
+  - `GOOGLE_PRIVATE_KEY` (ระวัง newline ใช้ค่าแท้ๆ หรือใส่ `\n` แล้วโค้ดจะแปลงให้)
+  - `GOOGLE_SHEETS_SPREADSHEET_ID` (ค่าเริ่มต้นสำหรับคำสั่ง /sheet)
+  - ตัวเลือก: `GOOGLE_SHEETS_SHEET_NAME` (ดีฟอลต์ `Sheet1`), `GOOGLE_SHEETS_DATE_COL` (ดีฟอลต์ A), `GOOGLE_SHEETS_TYPE_COL` (ดีฟอลต์ B), `GOOGLE_SHEETS_AMOUNT_COL` (ดีฟอลต์ C)
+- การใช้ใน LINE:
+  - `/sheet status` ดูสถานะการเชื่อมต่อ MCP ของ Google Sheets
+  - `/sheet summary ธันวาคม 2024` หรือ `/sheet summary 2024-12` เพื่อสรุปรายรับ/รายจ่ายของเดือนนั้น
+
 ## หมายเหตุเรื่องการส่งรูปภาพกลับไปที่ LINE
 - การตอบกลับรูปภาพจำเป็นต้องให้ URL ของไฟล์เป็น HTTPS ที่เข้าถึงได้จากอินเทอร์เน็ต
 - ตั้งค่า `PUBLIC_BASE_URL` ให้ชี้ไปยังโดเมน/URL ของเซิร์ฟเวอร์ (เช่นโดเมน production หรือ ngrok ที่เป็น https)
