@@ -153,8 +153,9 @@ app.post('/webhook', async (req, res) => {
                 
                 console.log('Received message:', userMessage);
                 
-                // MCP status command
-                if (userMessage.trim().toLowerCase() === '/mcp') {
+                // MCP status command (no Gemini call)
+                const textNorm = (userMessage || '').trim().toLowerCase();
+                if (textNorm === '/mcp' || textNorm.startsWith('/mcp ')) {
                     try {
                         const mcp = await import('./mcp/client.mjs');
                         const status = await mcp.getMcpStatus();

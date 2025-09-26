@@ -106,6 +106,10 @@ export async function closeMcp() {
 }
 
 export async function getMcpStatus() {
+  // Try to ensure connection so that status reflects actual availability
+  if (!clientInstance) {
+    try { await ensureClient(); } catch (_) {}
+  }
   const status = {
     connected: !!clientInstance,
     pid: transportInstance?.pid ?? null,
