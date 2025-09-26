@@ -1,10 +1,15 @@
+// Use CJS build via createRequire to avoid subpath export issues on Node 18
+import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
-import { Client } from '@modelcontextprotocol/sdk/client';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio';
-
+const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const sdkCjsDir = resolve(__dirname, '../node_modules/@modelcontextprotocol/sdk/dist/cjs');
+const { Client } = require(resolve(sdkCjsDir, 'client/index.js'));
+const { StdioClientTransport } = require(resolve(sdkCjsDir, 'client/stdio.js'));
+
+// __filename and __dirname already defined above
 
 let clientInstance = null;
 let transportInstance = null;

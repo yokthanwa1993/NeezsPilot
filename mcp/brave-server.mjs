@@ -1,7 +1,15 @@
 import axios from 'axios';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio';
+// Use CJS build via createRequire to avoid subpath export issues on Node 18
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+const require = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const sdkCjsDir = resolve(__dirname, '../node_modules/@modelcontextprotocol/sdk/dist/cjs');
+const { McpServer } = require(resolve(sdkCjsDir, 'server/mcp.js'));
+const { StdioServerTransport } = require(resolve(sdkCjsDir, 'server/stdio.js'));
 
 const server = new McpServer({ name: 'BraveSearchMCP', version: '0.1.0' });
 
@@ -18,22 +26,11 @@ server.registerTool(
       safesearch: z.enum(['off', 'moderate', 'strict']).optional(),
     },
     outputSchema: {
-      type: 'object',
-      properties: {
-        results: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              title: { type: 'string' },
-              url: { type: 'string' },
-              description: { type: 'string' },
-            },
-            required: ['title', 'url'],
-          },
-        },
-      },
-      required: ['results'],
+      results: z.array(z.object({
+        title: z.string(),
+        url: z.string(),
+        description: z.string().optional(),
+      })),
     },
     annotations: {
       readOnlyHint: true,
@@ -84,4 +81,3 @@ server.registerTool(
 );
 
 await server.connect(new StdioServerTransport());
-
