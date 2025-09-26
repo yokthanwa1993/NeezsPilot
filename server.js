@@ -43,6 +43,21 @@ function sanitizeForLine(text) {
     }
 }
 
+function normalizeTextForCommands(text) {
+    try {
+        let t = String(text ?? '');
+        // Remove zero-width spaces to make regex reliable
+        t = t.replace(/[\u200B-\u200D\uFEFF]/g, '');
+        // Trim
+        t = t.trim();
+        // Strip a leading @mention like "@NeezsPilot " (common in group chats)
+        t = t.replace(/^\s*@[^\s]+\s+/, '');
+        return t;
+    } catch (_) {
+        return String(text ?? '').trim();
+    }
+}
+
 // Send message to LINE
 async function sendLineMessage(replyToken, message) {
     try {
@@ -286,7 +301,7 @@ app.post('/webhook', async (req, res) => {
                 console.log('Received message:', userMessage);
                 
                 // Commands (no Gemini call)
-                const textNorm = (userMessage || '').trim();
+                const textNorm = normalizeTextForCommands(userMessage);
                 if (/^\/mcp(\s|$)/i.test(textNorm)) {
                     try {
                         const mcp = await import('./mcp/client.mjs');
