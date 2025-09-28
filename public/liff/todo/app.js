@@ -77,21 +77,39 @@ async function init() {
         btnDone.textContent = isDone ? 'ยกเลิกเสร็จ' : 'ทำเสร็จ';
         btnDone.className = 'secondary';
         btnDone.onclick = async () => {
-          const toggleToDone = !isDone;
-          await fetch(`/api/todos/${encodeURIComponent(it.id)}/done`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ done: toggleToDone })
-          });
-          if (toggleToDone && myProfile?.pictureUrl) {
-            const img = document.createElement('img');
-            img.src = myProfile.pictureUrl;
-            img.alt = myProfile.displayName || 'done by me';
-            img.className = 'avatar';
-            try { actions.replaceChild(img, btnDone); } catch (_) { actions.append(img); }
-            text.classList.add('done');
-          } else {
-            await render();
+          const toggleToDone = !String(text.className).includes('done');
+          const prevLabel = btnDone.textContent;
+          btnDone.disabled = true; btnDone.textContent = 'กำลังอัปเดต...';
+          try {
+            const r = await fetch(`/api/todos/${encodeURIComponent(it.id)}/done`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done: toggleToDone })
+            });
+            const j = await r.json().catch(()=>({}));
+            if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+            if (toggleToDone) {
+              text.classList.add('done');
+              btnDone.textContent = 'ยกเลิกเสร็จ';
+              if (myProfile?.pictureUrl) {
+                let img = actions.querySelector('img.avatar');
+                if (!img) {
+                  img = document.createElement('img');
+                  img.className = 'avatar';
+                  actions.insertBefore(img, btnDone);
+                }
+                img.src = myProfile.pictureUrl;
+                img.alt = myProfile.displayName || 'done by me';
+              }
+            } else {
+              text.classList.remove('done');
+              btnDone.textContent = 'ทำเสร็จ';
+              const img = actions.querySelector('img.avatar');
+              if (img) img.remove();
+            }
+          } catch (err) {
+            alert(`ทำรายการไม่สำเร็จ: ${err.message || err}`);
+            btnDone.textContent = prevLabel;
+          } finally {
+            btnDone.disabled = false;
           }
         };
         const btnDel = document.createElement('button');
@@ -102,11 +120,9 @@ async function init() {
           await fetch(`/api/todos/${encodeURIComponent(it.id)}`, { method: 'DELETE' });
           await render();
         };
+        // Render button and placeholder avatar if done
         if (isDone) {
-          const holder = document.createElement('div');
-          holder.className = 'avatar';
-          holder.style.background = '#eee';
-          actions.append(holder, btnDel);
+          actions.append(btnDone, btnDel);
         } else {
           actions.append(btnDone, btnDel);
         }

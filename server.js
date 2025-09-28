@@ -844,9 +844,11 @@ app.post('/api/todos/:id/done', async (req, res) => {
         if (!todoProvider.markDoneById) return res.status(400).json({ error: 'done not supported by this backend' });
         const id = req.params.id;
         const done = req.body?.done === false ? false : true;
+        console.log('[API] POST /api/todos/:id/done', { id, done });
         const result = await todoProvider.markDoneById(id, done);
         res.json(result);
     } catch (e) {
+        console.error('[API] /api/todos/:id/done error:', e?.response?.data || e?.message || e);
         res.status(500).json({ error: e?.message || String(e) });
     }
 });
@@ -855,9 +857,11 @@ app.delete('/api/todos/:id', async (req, res) => {
     try {
         if (!todoProvider.deleteById) return res.status(400).json({ error: 'delete not supported by this backend' });
         const id = req.params.id;
+        console.log('[API] DELETE /api/todos/:id', { id });
         const result = await todoProvider.deleteById(id);
         res.json(result);
     } catch (e) {
+        console.error('[API] /api/todos/:id delete error:', e?.response?.data || e?.message || e);
         res.status(500).json({ error: e?.message || String(e) });
     }
 });
