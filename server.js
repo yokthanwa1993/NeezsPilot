@@ -503,8 +503,7 @@ app.post('/webhook', async (req, res) => {
                     }
                     try {
                         const items = await todoProvider.listTodosForSource(event.source, { limit: isNaN(n) ? 10 : n });
-                        const chatKey = chatKeyFromSourceSimple(event.source);
-                        const openUrl = `https://liff.line.me/${liffId}?chatKey=${encodeURIComponent(chatKey)}`;
+                        const openUrl = `https://liff.line.me/${liffId}`;
                         const contents = {
                             type: 'bubble',
                             header: { type: 'box', layout: 'vertical', contents: [ { type: 'text', text: 'To Do ล่าสุด', weight: 'bold', size: 'md' } ] },

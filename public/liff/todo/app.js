@@ -12,16 +12,6 @@ function buildChatKey(ctx) {
   return 'user:' + (ctx?.userId || 'unknown');
 }
 
-function getQueryChatKey() {
-  try {
-    const u = new URL(location.href);
-    const v = u.searchParams.get('chatKey');
-    return v || '';
-  } catch (_) {
-    return '';
-  }
-}
-
 async function init() {
   const liffId = await getLiffId();
   if (!liffId) {
@@ -29,11 +19,10 @@ async function init() {
     return;
   }
   await liff.init({ liffId });
-  const ctx = liff.getContext && liff.getContext();
-  const chatKeyFromQuery = getQueryChatKey();
-  const chatKey = chatKeyFromQuery || buildChatKey(ctx);
+  const ctx = liff.getContext();
+  const chatKey = buildChatKey(ctx);
   const ctxEl = document.getElementById('ctx');
-  ctxEl.textContent = `บริบท: ${(ctx && ctx.type) || (chatKeyFromQuery ? 'query' : 'unknown')} (${chatKey})`;
+  ctxEl.textContent = `บริบท: ${ctx.type || 'unknown'} (${chatKey})`;
 
   const listEl = document.getElementById('list');
   const showDoneEl = document.getElementById('showDone');
