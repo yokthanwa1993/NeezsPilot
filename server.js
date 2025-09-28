@@ -360,6 +360,33 @@ app.post('/webhook', async (req, res) => {
                 const replyToken = event.replyToken;
                 const sourceType = event.source?.type;
                 const inGroupLike = sourceType === 'group' || sourceType === 'room';
+
+                // Ultra-early hard guard: if message (after stripping a leading @mention)
+                // starts with /add to do list or variants, handle now and exit silently.
+                try {
+                    const early = normalizeTextForCommands(userMessage);
+                    const addEarly = early.match(/^\/add\s+to\s*do\s+list\s+(.+)/i)
+                        || early.match(/^\/add\s+to\s*do\s+(.+)/i)
+                        || early.match(/^\/add\s+todo\s+(.+)/i)
+                        || early.match(/^\/todo\s+add\s+(.+)/i);
+                    if (addEarly) {
+                        const taskText = (addEarly[1] || '').trim();
+                        if (taskText) {
+                            console.log('[EARLY TODO] add start');
+                            try {
+                                await todoProvider.addTodoForSource(event.source, {
+                                    text: taskText,
+                                    userId: event.source?.userId || null,
+                                    meta: { messageId: event.message?.id || null },
+                                });
+                                console.log('[EARLY TODO] add ok');
+                            } catch (e) {
+                                console.error('[EARLY TODO] add error:', e?.response?.data || e?.message || e);
+                            }
+                            continue; // never fallthrough to Gemini
+                        }
+                    }
+                } catch (_) {}
                 
                 // Commands (no Gemini call)
                 const textNorm = normalizeTextForCommands(userMessage);
