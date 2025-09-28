@@ -827,12 +827,14 @@ app.get('/api/todos', async (req, res) => {
 app.post('/api/todos', async (req, res) => {
     try {
         const { chatKey, text, userId } = req.body || {};
+        console.log('[API] POST /api/todos', { chatKey, text: (text||'').slice(0,60) });
         if (!chatKey || !text) return res.status(400).json({ error: 'missing chatKey or text' });
         const [type, id] = String(chatKey).split(':');
         const source = type === 'group' ? { type: 'group', groupId: id } : type === 'room' ? { type: 'room', roomId: id } : { type: 'user', userId: id };
         const item = await todoProvider.addTodoForSource(source, { text, userId });
         res.json({ item });
     } catch (e) {
+        console.error('[API] /api/todos error:', e?.response?.data || e?.message || e);
         res.status(500).json({ error: e?.message || String(e) });
     }
 });

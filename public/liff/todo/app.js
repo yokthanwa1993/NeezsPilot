@@ -124,9 +124,15 @@ async function init() {
     e.preventDefault();
     const text = document.getElementById('text').value.trim();
     if (!text) return;
-    await fetch('/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatKey, text }) });
-    document.getElementById('text').value = '';
-    await render();
+    try {
+      const r = await fetch('/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatKey, text }) });
+      const j = await r.json().catch(()=>({}));
+      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      document.getElementById('text').value = '';
+      await render();
+    } catch (err) {
+      alert(`เพิ่มรายการไม่สำเร็จ: ${err.message || err}`);
+    }
   });
   document.getElementById('refresh').addEventListener('click', render);
   document.getElementById('showDone').addEventListener('change', render);
