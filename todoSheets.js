@@ -2,19 +2,41 @@ const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
 
-const SPREADSHEET_ID = process.env.TODO_SHEETS_SPREADSHEET_ID || process.env.GOOGLE_SHEETS_SPREADSHEET_ID || '';
-const SHEET_NAME = process.env.TODO_SHEETS_SHEET_NAME || process.env.GOOGLE_SHEETS_SHEET_NAME || 'To-do list';
-const MODE = (process.env.TODO_SHEETS_MODE || 'table').toLowerCase(); // 'table' | 'template'
-const TEMPLATE_START_ROW = parseInt(process.env.TODO_SHEETS_TEMPLATE_START_ROW || '3', 10);
-const TEMPLATE_RANGE = process.env.TODO_SHEETS_TEMPLATE_RANGE || 'A:C';
+// Hard-coded defaults so deployment doesn't require .env for ToDo Sheets
+const DEFAULT_SPREADSHEET_ID = '1iPKsaDC8QOa_lC3Dro40cUWAD-jVnBQdVrNoDMu6f-I';
+const DEFAULT_SHEET_NAME = 'To do';
+const DEFAULT_MODE = 'template'; // 'table' | 'template'
+const DEFAULT_TEMPLATE_START_ROW = 3;
+const DEFAULT_TEMPLATE_RANGE = 'A:C';
+
+// Use env if provided, otherwise fallback to code defaults (per user request)
+const SPREADSHEET_ID = process.env.TODO_SHEETS_SPREADSHEET_ID || process.env.GOOGLE_SHEETS_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID;
+const SHEET_NAME = process.env.TODO_SHEETS_SHEET_NAME || process.env.GOOGLE_SHEETS_SHEET_NAME || DEFAULT_SHEET_NAME;
+const MODE = (process.env.TODO_SHEETS_MODE || DEFAULT_MODE).toLowerCase();
+const TEMPLATE_START_ROW = parseInt(process.env.TODO_SHEETS_TEMPLATE_START_ROW || String(DEFAULT_TEMPLATE_START_ROW), 10);
+const TEMPLATE_RANGE = process.env.TODO_SHEETS_TEMPLATE_RANGE || DEFAULT_TEMPLATE_RANGE;
 
 function getSheetsClient() {
   // Support service account via file, raw JSON, or env pair
   const keyFile = process.env.TODO_SHEETS_SERVICE_ACCOUNT_KEY_FILE || process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE;
   const keyJson = process.env.TODO_SHEETS_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const keyBase64 = process.env.GOOGLE_SERVICE_ACCOUNT_KEY || process.env.TODO_SHEETS_SERVICE_ACCOUNT_KEY_BASE64;
   let clientEmail = process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_TASKS_CLIENT_EMAIL;
   let privateKey = process.env.GOOGLE_PRIVATE_KEY || process.env.GOOGLE_TASKS_PRIVATE_KEY || '';
   const preferFile = /^1|true|yes$/i.test(String(process.env.TODO_SHEETS_PREFER_KEY_FILE || ''));
+  // 1) Prefer Base64 blob if provided
+  if (keyBase64) {
+    try {
+      const raw = Buffer.from(keyBase64, 'base64').toString('utf8');
+      const obj = JSON.parse(raw);
+      clientEmail = obj.client_email || clientEmail;
+      privateKey = obj.private_key || privateKey;
+    } catch (e) {
+      // ignore decode error; fall back to other methods
+    }
+  }
+
+  // 2) Load from file or raw JSON if still missing or prefer file
   if ((keyFile || keyJson) && (preferFile || !clientEmail || !privateKey)) {
     try {
       let obj;
@@ -221,6 +243,8 @@ module.exports = {
   listTodosForSource,
   markDoneById,
   deleteById,
+  // Expose runtime config for status reporting
+  __config: { SPREADSHEET_ID, SHEET_NAME, MODE, TEMPLATE_START_ROW, TEMPLATE_RANGE },
 };
 
 // Helpers for template mode

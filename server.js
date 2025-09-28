@@ -22,7 +22,8 @@ const DEFAULT_SHEETS_NAME = process.env.GOOGLE_SHEETS_SHEET_NAME || 'Sheet1';
 const DEFAULT_SHEETS_DATE_COL = process.env.GOOGLE_SHEETS_DATE_COL || 'A';
 const DEFAULT_SHEETS_TYPE_COL = process.env.GOOGLE_SHEETS_TYPE_COL || 'B';
 const DEFAULT_SHEETS_AMOUNT_COL = process.env.GOOGLE_SHEETS_AMOUNT_COL || 'C';
-const TODO_BACKEND = (process.env.TODO_BACKEND || 'file').toLowerCase();
+// Default ToDo backend to Google Sheets so it works without env
+const TODO_BACKEND = (process.env.TODO_BACKEND || 'sheets').toLowerCase();
 let todoProvider;
 if (TODO_BACKEND.startsWith('google-task')) {
     todoProvider = require('./googleTasks');
@@ -448,6 +449,32 @@ app.post('/webhook', async (req, res) => {
                         await sendLineMessage(replyToken, 'ยังไม่ได้ตั้งค่า LIFF_TODO_ID');
                     } else {
                         await sendLineMessage(replyToken, `เปิดหน้าจัดการ To Do:\nhttps://liff.line.me/${liffId}`);
+                    }
+                    continue;
+                }
+
+                // To-do backend status
+                if (/^\/todo\s+status/i.test(textNorm)) {
+                    try {
+                        let msg = `To Do backend: ${TODO_BACKEND}`;
+                        if (TODO_BACKEND.startsWith('sheet')) {
+                            // Prefer runtime config exported by todoSheets (hardcoded defaults), fallback to env
+                            const cfg = (todoProvider && todoProvider.__config) || {};
+                            const mode = cfg.MODE || (process.env.TODO_SHEETS_MODE || 'table');
+                            const name = cfg.SHEET_NAME || (process.env.TODO_SHEETS_SHEET_NAME || 'Todos');
+                            const sidFull = cfg.SPREADSHEET_ID || (process.env.TODO_SHEETS_SPREADSHEET_ID || '');
+                            const sid = sidFull ? (sidFull.slice(0, 8) + '…') : '(not set)';
+                            msg += `\nMode: ${mode}`;
+                            msg += `\nSheet: ${name}`;
+                            msg += `\nSpreadsheet: ${sid}`;
+                            if ((mode || '').toLowerCase() === 'template') {
+                                msg += `\nStart row: ${cfg.TEMPLATE_START_ROW || process.env.TODO_SHEETS_TEMPLATE_START_ROW || '3'}`;
+                                msg += `\nRange: ${cfg.TEMPLATE_RANGE || process.env.TODO_SHEETS_TEMPLATE_RANGE || 'A:C'}`;
+                            }
+                        }
+                        await sendLineMessage(replyToken, msg);
+                    } catch (e) {
+                        await sendLineMessage(replyToken, `Status error: ${e?.message || String(e)}`);
                     }
                     continue;
                 }
