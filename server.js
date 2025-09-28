@@ -390,10 +390,11 @@ app.post('/webhook', async (req, res) => {
                 // starts with /add to do list or variants, handle now and exit silently.
                 try {
                     const early = normalizeTextForCommands(userMessage);
-                    const addEarly = early.match(/^\/add\s+to\s*do\s+list\s+(.+)/i)
-                        || early.match(/^\/add\s+to\s*do\s+(.+)/i)
-                        || early.match(/^\/add\s+todo\s+(.+)/i)
-                        || early.match(/^\/todo\s+add\s+(.+)/i);
+                    // Support multiline task text as well
+                    const addEarly = early.match(/^\/add\s+to\s*do\s+list\s+([\s\S]+)/i)
+                        || early.match(/^\/add\s+to\s*do\s+([\s\S]+)/i)
+                        || early.match(/^\/add\s+todo\s+([\s\S]+)/i)
+                        || early.match(/^\/todo\s+add\s+([\s\S]+)/i);
                     if (addEarly) {
                         const taskText = (addEarly[1] || '').trim();
                         if (taskText) {
@@ -454,10 +455,11 @@ app.post('/webhook', async (req, res) => {
                 // - /add to do <text>
                 // - /add todo <text>
                 // - /todo add <text>
-                const addTodoMatch = textNorm.match(/^\/add\s+to\s*do\s+list\s+(.+)/i)
-                    || textNorm.match(/^\/add\s+to\s*do\s+(.+)/i)
-                    || textNorm.match(/^\/add\s+todo\s+(.+)/i)
-                    || textNorm.match(/^\/todo\s+add\s+(.+)/i);
+                // Support multiline task text: use [\s\S]+ instead of .+
+                const addTodoMatch = textNorm.match(/^\/add\s+to\s*do\s+list\s+([\s\S]+)/i)
+                    || textNorm.match(/^\/add\s+to\s*do\s+([\s\S]+)/i)
+                    || textNorm.match(/^\/add\s+todo\s+([\s\S]+)/i)
+                    || textNorm.match(/^\/todo\s+add\s+([\s\S]+)/i);
                 if (addTodoMatch) {
                     console.log('Handling /add to do command');
                     const taskText = (addTodoMatch[1] || '').trim();
