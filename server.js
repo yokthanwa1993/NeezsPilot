@@ -676,12 +676,16 @@ app.post('/webhook', async (req, res) => {
                     continue;
                 }
 
-                // Send to Gemini (in group: use normalized text to remove @mention prefix)
-                console.log('Handling chat message');
-                const geminiInput = inGroupLike ? textNorm : userMessage;
+                // In groups/rooms, disable Gemini fallback entirely to avoid chatty replies.
+                if (inGroupLike) {
+                    console.log('Skip Gemini: group/room fallback disabled');
+                    continue;
+                }
+
+                // Send to Gemini only in 1:1 chat
+                console.log('Handling chat message (1:1 Gemini)');
+                const geminiInput = userMessage;
                 const geminiResponse = await sendToGemini(geminiInput);
-                
-                // Send response back to LINE
                 await sendLineMessage(replyToken, geminiResponse);
             } else if (event.type === 'message' && event.message.type === 'image') {
                 const replyToken = event.replyToken;
