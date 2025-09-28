@@ -22,7 +22,8 @@
     .actions { display: flex; gap: 6px; }
     .done { text-decoration: line-through; color: #888; }
   </style>
-  <script defer src="app.js"></script>
+  <!-- cache bust to ensure latest gating logic -->
+  <script defer src="app.js?v=3"></script>
   <script>window.__LIFF_MODE__ = 'todo';</script>
 </head>
 <body>
@@ -43,4 +44,3 @@
   </main>
 </body>
 </html>
-

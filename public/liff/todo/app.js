@@ -19,8 +19,9 @@ async function init() {
     return;
   }
   await liff.init({ liffId });
-  // Allow only inside LINE client (LIFF). If opened directly, show guidance and stop.
-  if (!liff.isInClient?.() && !liff.getContext?.()) {
+  // Strict gating: show only when running inside LINE client.
+  const inClient = typeof liff.isInClient === 'function' ? liff.isInClient() : false;
+  if (!inClient) {
     const ctxEl = document.getElementById('ctx');
     ctxEl.textContent = 'โปรดเปิดหน้าจอนี้ผ่าน LINE (LIFF) เท่านั้น';
     const form = document.getElementById('form');
@@ -29,7 +30,16 @@ async function init() {
     if (listEl) listEl.innerHTML = '<li class="muted">(ปิดการใช้งานนอก LIFF)</li>';
     return;
   }
-  const ctx = liff.getContext();
+  const ctx = typeof liff.getContext === 'function' ? liff.getContext() : null;
+  if (!ctx || !ctx.type) {
+    const ctxEl = document.getElementById('ctx');
+    ctxEl.textContent = 'ไม่พบบริบทของ LIFF กรุณาเปิดผ่านแชทอีกครั้ง';
+    const form = document.getElementById('form');
+    if (form) form.style.display = 'none';
+    const listEl = document.getElementById('list');
+    if (listEl) listEl.innerHTML = '<li class="muted">(ไม่พบบริบทของ LIFF)</li>';
+    return;
+  }
   const chatKey = buildChatKey(ctx);
   const ctxEl = document.getElementById('ctx');
   ctxEl.textContent = `บริบท: ${ctx.type || 'unknown'} (${chatKey})`;
