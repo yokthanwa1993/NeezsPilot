@@ -46,6 +46,9 @@ async function init() {
 
   const listEl = document.getElementById('list');
   const showDoneEl = document.getElementById('showDone');
+  // Cache current user's LIFF profile to use avatar when marking done
+  let myProfile = null;
+  try { myProfile = await liff.getProfile(); } catch (_) {}
 
   async function render() {
     listEl.innerHTML = '<li class="muted">กำลังโหลด...</li>';
@@ -62,7 +65,8 @@ async function init() {
       for (const it of items) {
         const li = document.createElement('li');
         const text = document.createElement('div');
-        text.className = 'task-text' + (String(it.status).toLowerCase() === 'done' ? ' done' : '');
+        const isDone = String(it.status).toLowerCase() === 'done';
+        text.className = 'task-text' + (isDone ? ' done' : '');
         text.textContent = it.text;
         const meta = document.createElement('div');
         meta.className = 'muted';
@@ -70,11 +74,25 @@ async function init() {
         const actions = document.createElement('div');
         actions.className = 'actions';
         const btnDone = document.createElement('button');
-        btnDone.textContent = String(it.status).toLowerCase() === 'done' ? 'ยกเลิกเสร็จ' : 'ทำเสร็จ';
+        btnDone.textContent = isDone ? 'ยกเลิกเสร็จ' : 'ทำเสร็จ';
         btnDone.className = 'secondary';
         btnDone.onclick = async () => {
-          await fetch(`/api/todos/${encodeURIComponent(it.id)}/done`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done: String(it.status).toLowerCase() !== 'done' }) });
-          await render();
+          const toggleToDone = !isDone;
+          await fetch(`/api/todos/${encodeURIComponent(it.id)}/done`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ done: toggleToDone })
+          });
+          if (toggleToDone && myProfile?.pictureUrl) {
+            const img = document.createElement('img');
+            img.src = myProfile.pictureUrl;
+            img.alt = myProfile.displayName || 'done by me';
+            img.className = 'avatar';
+            try { actions.replaceChild(img, btnDone); } catch (_) { actions.append(img); }
+            text.classList.add('done');
+          } else {
+            await render();
+          }
         };
         const btnDel = document.createElement('button');
         btnDel.textContent = 'ลบ';
@@ -84,7 +102,14 @@ async function init() {
           await fetch(`/api/todos/${encodeURIComponent(it.id)}`, { method: 'DELETE' });
           await render();
         };
-        actions.append(btnDone, btnDel);
+        if (isDone) {
+          const holder = document.createElement('div');
+          holder.className = 'avatar';
+          holder.style.background = '#eee';
+          actions.append(holder, btnDel);
+        } else {
+          actions.append(btnDone, btnDel);
+        }
         const left = document.createElement('div');
         left.append(text, meta);
         li.append(left, actions);
