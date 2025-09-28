@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
 
 // LINE Bot configuration
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
@@ -21,6 +22,15 @@ const DEFAULT_SHEETS_NAME = process.env.GOOGLE_SHEETS_SHEET_NAME || 'Sheet1';
 const DEFAULT_SHEETS_DATE_COL = process.env.GOOGLE_SHEETS_DATE_COL || 'A';
 const DEFAULT_SHEETS_TYPE_COL = process.env.GOOGLE_SHEETS_TYPE_COL || 'B';
 const DEFAULT_SHEETS_AMOUNT_COL = process.env.GOOGLE_SHEETS_AMOUNT_COL || 'C';
+const TODO_BACKEND = (process.env.TODO_BACKEND || 'file').toLowerCase();
+let todoProvider;
+if (TODO_BACKEND.startsWith('google-task')) {
+    todoProvider = require('./googleTasks');
+} else if (TODO_BACKEND.startsWith('sheet')) {
+    todoProvider = require('./todoSheets');
+} else {
+    todoProvider = require('./todoStore');
+}
 
 // Verify LINE signature
 function verifySignature(body, signature) {
@@ -347,7 +357,7 @@ app.post('/webhook', async (req, res) => {
                 
                 // Commands (no Gemini call)
                 const textNorm = normalizeTextForCommands(userMessage);
-                const isSlashCommand = /^\/(mcp|image)(\s|$)/i.test(textNorm);
+                const isSlashCommand = /^\/(mcp|image|todo|add|list)(\s|$)/i.test(textNorm);
                 const hasMentionMeta = Array.isArray(event.message?.mention?.mentionees) && event.message.mention.mentionees.length > 0;
                 const startsWithAt = (userMessage || '').trim().startsWith('@');
                 const isExplicitMention = hasMentionMeta || startsWithAt;
@@ -377,6 +387,67 @@ app.post('/webhook', async (req, res) => {
                         await sendLineMessage(replyToken, msg);
                     } catch (e) {
                         await sendLineMessage(replyToken, `MCP status error: ${e?.message || String(e)}`);
+                    }
+                    continue;
+                }
+
+                // To-do add: supports:
+                // - /add to do list <text>
+                // - /add to do <text>
+                // - /add todo <text>
+                // - /todo add <text>
+                const addTodoMatch = textNorm.match(/^\/add\s+to\s*do\s+list\s+(.+)/i)
+                    || textNorm.match(/^\/add\s+to\s*do\s+(.+)/i)
+                    || textNorm.match(/^\/add\s+todo\s+(.+)/i)
+                    || textNorm.match(/^\/todo\s+add\s+(.+)/i);
+                if (addTodoMatch) {
+                    console.log('Handling /add to do command');
+                    const taskText = (addTodoMatch[1] || '').trim();
+                    if (!taskText) {
+                        await sendLineMessage(replyToken, 'โปรดพิมพ์ /add to do list ตามด้วยสิ่งที่ต้องทำ\nเช่น /add to do list ซื้อของวันจันทร์');
+                        continue;
+                    }
+                    try {
+                        const item = await todoProvider.addTodoForSource(event.source, {
+                            text: taskText,
+                            userId: event.source?.userId || null,
+                            meta: { messageId: event.message?.id || null },
+                        });
+                        await sendLineMessage(replyToken, `เพิ่ม To Do แล้ว:\n- ${item.text}`);
+                    } catch (e) {
+                        await sendLineMessage(replyToken, `เพิ่ม To Do ไม่สำเร็จ: ${e?.message || 'ไม่ทราบสาเหตุ'}`);
+                    }
+                    continue;
+                }
+
+                // To-do list: /list to do [N]
+                const listTodoMatch = textNorm.match(/^\/list\s+to\s*do(?:s)?(?:\s+(\d+))?/i)
+                    || textNorm.match(/^\/todo\s+list(?:\s+(\d+))?/i);
+                if (listTodoMatch) {
+                    console.log('Handling /list to do command');
+                    const n = parseInt(listTodoMatch[1] || '10', 10);
+                    try {
+                        const items = await todoProvider.listTodosForSource(event.source, { limit: isNaN(n) ? 10 : n });
+                        if (!items.length) {
+                            await sendLineMessage(replyToken, 'ยังไม่มี To Do ในห้องนี้');
+                        } else {
+                            let msg = 'To Do ล่าสุด:\n';
+                            items.forEach((it, i) => { msg += `${i + 1}. ${it.text}\n`; });
+                            await sendLineMessage(replyToken, msg.trim());
+                        }
+                    } catch (e) {
+                        await sendLineMessage(replyToken, `ไม่สามารถแสดงรายการ To Do ได้: ${e?.message || 'ไม่ทราบสาเหตุ'}`);
+                    }
+                    continue;
+                }
+
+                // LIFF link for todo
+                if (/^\/todo\s+liff/i.test(textNorm)) {
+                    const liffId = process.env.LIFF_TODO_ID || process.env.LIFF_ID;
+                    if (!liffId) {
+                        await sendLineMessage(replyToken, 'ยังไม่ได้ตั้งค่า LIFF_TODO_ID');
+                    } else {
+                        await sendLineMessage(replyToken, `เปิดหน้าจัดการ To Do:\nhttps://liff.line.me/${liffId}`);
                     }
                     continue;
                 }
@@ -569,6 +640,64 @@ app.post('/webhook', async (req, res) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', message: 'LINE Bot with Gemini 2.5 Flash is running' });
+});
+
+// LIFF config endpoint (provides LIFF ID to frontend)
+app.get('/liff/config', (req, res) => {
+    res.json({ liffId: process.env.LIFF_TODO_ID || process.env.LIFF_ID || '' });
+});
+
+// Simple ToDo API for LIFF frontend (Google Sheets backend recommended)
+app.get('/api/todos', async (req, res) => {
+    try {
+        const chatKey = req.query.chatKey;
+        const limit = Math.max(1, Math.min(parseInt(req.query.limit || '50', 10) || 50, 200));
+        const includeDone = /^(1|true|yes)$/i.test(String(req.query.includeDone || 'false'));
+        if (!chatKey) return res.status(400).json({ error: 'missing chatKey' });
+        // Convert chatKey string to a source-like object
+        const [type, id] = String(chatKey).split(':');
+        const source = type === 'group' ? { type: 'group', groupId: id } : type === 'room' ? { type: 'room', roomId: id } : { type: 'user', userId: id };
+        const items = await (todoProvider.listTodosForSource?.(source, { limit, includeDone }) || []);
+        res.json({ items });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.post('/api/todos', async (req, res) => {
+    try {
+        const { chatKey, text, userId } = req.body || {};
+        if (!chatKey || !text) return res.status(400).json({ error: 'missing chatKey or text' });
+        const [type, id] = String(chatKey).split(':');
+        const source = type === 'group' ? { type: 'group', groupId: id } : type === 'room' ? { type: 'room', roomId: id } : { type: 'user', userId: id };
+        const item = await todoProvider.addTodoForSource(source, { text, userId });
+        res.json({ item });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.post('/api/todos/:id/done', async (req, res) => {
+    try {
+        if (!todoProvider.markDoneById) return res.status(400).json({ error: 'done not supported by this backend' });
+        const id = req.params.id;
+        const done = req.body?.done === false ? false : true;
+        const result = await todoProvider.markDoneById(id, done);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.delete('/api/todos/:id', async (req, res) => {
+    try {
+        if (!todoProvider.deleteById) return res.status(400).json({ error: 'delete not supported by this backend' });
+        const id = req.params.id;
+        const result = await todoProvider.deleteById(id);
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
 });
 
 // Start server

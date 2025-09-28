@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>To Do – NeezsPilot</title>
+  <link rel="preconnect" href="https://static.line-scdn.net" />
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 16px; background: #fafafa; }
+    header { margin-bottom: 12px; }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    .ctx { color: #666; font-size: 12px; margin-bottom: 8px; }
+    form { display: flex; gap: 8px; margin-bottom: 12px; }
+    input[type=text] { flex: 1; padding: 10px; font-size: 16px; border: 1px solid #ddd; border-radius: 8px; }
+    button { padding: 10px 14px; font-size: 14px; border: none; background: #00b900; color: white; border-radius: 8px; cursor: pointer; }
+    button.secondary { background: #eee; color: #333; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { background: white; border: 1px solid #eee; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .task-text { flex: 1; }
+    .muted { color: #888; font-size: 12px; }
+    .actions { display: flex; gap: 6px; }
+    .done { text-decoration: line-through; color: #888; }
+  </style>
+  <script defer src="app.js"></script>
+  <script>window.__LIFF_MODE__ = 'todo';</script>
+</head>
+<body>
+  <header>
+    <h1>To Do</h1>
+    <div class="ctx" id="ctx">กำลังเริ่มต้น...</div>
+  </header>
+  <main>
+    <form id="form">
+      <input id="text" type="text" placeholder="เพิ่มสิ่งที่ต้องทำ..." required />
+      <button type="submit">เพิ่ม</button>
+    </form>
+    <div style="margin-bottom:8px">
+      <button id="refresh" class="secondary">รีเฟรช</button>
+      <label style="margin-left:8px; font-size:13px"><input type="checkbox" id="showDone" /> แสดงรายการที่เสร็จแล้ว</label>
+    </div>
+    <ul id="list"></ul>
+  </main>
+</body>
+</html>
+

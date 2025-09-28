@@ -10,6 +10,32 @@ LINE_CHANNEL_SECRET=your_line_channel_secret
 GEMINI_API_KEY=your_gemini_api_key
 BRAVE_API_KEY=your_brave_search_api_key
 PORT=3000
+TODO_BACKEND=file
+
+# ใช้ Google Tasks (ทางเลือก)
+# ตั้งค่าเพื่อเก็บ To Do ไปที่ Google Tasks แทนไฟล์
+# โหมด OAuth (แนะนำสำหรับบัญชีส่วนตัว):
+#TODO_BACKEND=google-tasks
+#GOOGLE_TASKS_AUTH=oauth2
+#GOOGLE_TASKS_CLIENT_ID=your_oauth_client_id
+#GOOGLE_TASKS_CLIENT_SECRET=your_oauth_client_secret
+#GOOGLE_TASKS_REFRESH_TOKEN=your_oauth_refresh_token
+# (ตัวเลือก) บังคับใช้รายการเดียวทุกห้อง: ถ้าไม่ตั้ง บอทจะสร้าง list แยกตามห้อง
+#GOOGLE_TASKS_LIST_ID=tasks_list_id
+
+# โหมด Service Account (ต้องเป็น Google Workspace + เปิด Domain-wide Delegation)
+#TODO_BACKEND=google-tasks
+#GOOGLE_TASKS_AUTH=service-account
+# ใช้อย่างใดอย่างหนึ่ง:
+# 1) ไฟล์คีย์:
+#GOOGLE_TASKS_SERVICE_ACCOUNT_KEY_FILE=service-account-key.json
+# 2) JSON ทั้งก้อน:
+#GOOGLE_TASKS_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+# หรือระบุค่าแยก:
+#GOOGLE_TASKS_CLIENT_EMAIL=...
+#GOOGLE_TASKS_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+# และอีเมลผู้ใช้ที่จะ impersonate ภายในโดเมน:
+#GOOGLE_TASKS_IMPERSONATE=user@yourdomain.com
 ```
 
 ## การติดตั้ง
@@ -66,6 +92,63 @@ npm run dev
 - ตอบกลับข้อความที่ประมวลผลแล้ว
 - รองรับการตรวจสอบลายเซ็นดิจิทัล
 - มี health check endpoint
+
+## To Do ด้วย Google Sheets + LIFF (แนะนำ)
+
+- ตั้งค่าใช้งาน:
+  - `TODO_BACKEND=sheets`
+  - `TODO_SHEETS_SPREADSHEET_ID=<สเปรดชีตไอดี>` (เช่น จาก URL ของ Google Sheets)
+  - ตัวเลือก: `TODO_SHEETS_SHEET_NAME=Todos` (ดีฟอลต์ `Todos`)
+  - Service Account: ตั้งค่าอย่างใดอย่างหนึ่ง และแชร์สเปรดชีตให้เมลของ Service Account เป็น Editor
+    - คู่ค่า env: `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY` (ถ้าเป็น single line ให้ใส่ `\n` แทน newline)
+    - หรือไฟล์: `TODO_SHEETS_SERVICE_ACCOUNT_KEY_FILE=service-account-key.json`
+    - หรือ JSON ทั้งก้อน: `TODO_SHEETS_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'`
+  - LIFF: สร้าง LIFF app และตั้งค่า
+    - Endpoint URL: `https://<โดเมนของคุณ>/liff/todo/`
+    - Size: Full / Tall ตามต้องการ
+    - เพิ่มใน `.env`: `LIFF_TODO_ID=<liffId>`
+
+- โครงสร้างชีต (แถวที่ 1 คือ header):
+  - A: `id`
+  - B: `chatKey` (เช่น `group:<groupId>`, `room:<roomId>`, `user:<userId>`) 
+  - C: `status` (`open`|`done`)
+  - D: `text`
+  - E: `createdAt`
+  - F: `createdBy`
+  - G: `doneAt`
+  - H: `deleted` (1 หรือเว้นว่าง)
+  - ระบบจะสร้าง header ให้ถ้ายังไม่มี
+  - รองรับชื่อชีตที่มีช่องว่าง/อักขระพิเศษ (เช่น `To do`, `To-do list`) โดยระบบจะใส่เครื่องหมาย ' อัตโนมัติ
+
+- การใช้งานจาก LINE:
+  - สั่งเปิด LIFF: `/todo liff` (ต้องตั้งค่า `LIFF_TODO_ID` ก่อน)
+  - เพิ่มรายการผ่านแชท: `/add to do <ข้อความ>`
+  - ดูรายการผ่านแชท: `/list to do [N]`
+  - หมายเหตุ: ในกลุ่ม/ห้อง บอทตอบเฉพาะข้อความที่ขึ้นต้นด้วย `/` หรือถูก @mention
+
+## To Do แบบง่าย (ในไฟล์)
+
+- เพิ่มรายการ: พิมพ์ `/add to do <ข้อความ>` เช่น `/add to do ซื้อของวันจันทร์`
+- ดูรายการล่าสุด: พิมพ์ `/list to do` หรือ `/list to do 20` เพื่อดู N รายการล่าสุด
+- ระบบเก็บข้อมูลเป็นไฟล์ในโปรเจกต์ที่ `data/todos.json` แยกตามห้องแชท (group/room/user)
+- หมายเหตุ: ยังไม่มีคำสั่งลบ/ทำเสร็จ และข้อมูลอยู่ในไฟล์ภายในเซิร์ฟเวอร์เท่านั้น (เหมาะสำหรับใช้งานเบื้องต้น)
+
+## To Do ผ่าน Google Tasks (ตัวเลือก)
+
+- เปลี่ยน `TODO_BACKEND=google-tasks`
+- เลือกโหมด auth:
+  - OAuth: ตั้งค่า `GOOGLE_TASKS_CLIENT_ID`, `GOOGLE_TASKS_CLIENT_SECRET`, `GOOGLE_TASKS_REFRESH_TOKEN`
+  - Service Account (Workspace เท่านั้น): ตั้งค่า `GOOGLE_TASKS_AUTH=service-account` และคีย์ + `GOOGLE_TASKS_IMPERSONATE`
+- ถ้าไม่ตั้ง `GOOGLE_TASKS_LIST_ID` บอทจะสร้าง Task List ต่อห้องอัตโนมัติ ชื่อ `NeezsPilot: <ชนิด>:<ไอดี>`
+- ใช้คำสั่งเดิม: `/add to do ...`, `/list to do [N]`
+- หมายเหตุสำคัญ:
+  - บัญชีส่วนตัว (gmail.com): ใช้ Service Account ไม่ได้ ให้ใช้ OAuth เท่านั้น
+  - Service Account ใช้ได้เมื่อเป็น Google Workspace และเปิด Domain-wide Delegation พร้อมอนุญาต scope `https://www.googleapis.com/auth/tasks`, และต้องตั้ง `GOOGLE_TASKS_IMPERSONATE` เป็นอีเมลผู้ใช้ในโดเมน
+
+### วิธีได้ Refresh Token อย่างย่อ (ครั้งเดียว)
+- สร้าง OAuth 2.0 Client (Desktop) ใน Google Cloud Console เปิดใช้ API: Google Tasks API
+- ใช้เครื่องมือเช่น `googleapis` script หรือ `oauth2l` เพื่อขอ consent และรับ refresh token ด้วย scope `https://www.googleapis.com/auth/tasks`
+- ใส่ค่า refresh token ที่ได้ลงใน `.env`
 
 ## การใช้งาน Brave Search
 

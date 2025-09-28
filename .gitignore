@@ -20,6 +20,8 @@ pids
 *.pid
 *.seed
 *.pid.lock
+data/
+neezspilot-sheets-key.json
 
 # Coverage directory used by tools like istanbul
 coverage/
