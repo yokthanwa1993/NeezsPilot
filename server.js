@@ -633,7 +633,11 @@ app.post('/webhook', async (req, res) => {
 
                 // If it's a slash command but not matched above, do not forward to Gemini.
                 // This prevents Gemini from answering command-like messages.
-                if (isSlashCommand) {
+                // Additional guard: if raw message starts with '/' or '@... /', skip Gemini entirely
+                const rawMsg = (userMessage || '').trim();
+                const rawIsSlash = /^\s*\//.test(rawMsg) || /^\s*@[^\s]+\s*\//.test(rawMsg);
+                if (isSlashCommand || rawIsSlash) {
+                    console.log('Skip Gemini for slash-command-like message');
                     continue;
                 }
 
