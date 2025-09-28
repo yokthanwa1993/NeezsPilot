@@ -631,6 +631,12 @@ app.post('/webhook', async (req, res) => {
                     continue;
                 }
 
+                // If it's a slash command but not matched above, do not forward to Gemini.
+                // This prevents Gemini from answering command-like messages.
+                if (isSlashCommand) {
+                    continue;
+                }
+
                 // Send to Gemini (in group: use normalized text to remove @mention prefix)
                 console.log('Handling chat message');
                 const geminiInput = inGroupLike ? textNorm : userMessage;
