@@ -414,7 +414,7 @@ app.post('/webhook', async (req, res) => {
                             userId: event.source?.userId || null,
                             meta: { messageId: event.message?.id || null },
                         });
-                        await sendLineMessage(replyToken, `เพิ่ม To Do แล้ว:\n- ${item.text}`);
+                        await sendLineMessage(replyToken, `เพิ่มข้อมูลเรียบร้อย: ${item.text}`);
                     } catch (e) {
                         await sendLineMessage(replyToken, `เพิ่ม To Do ไม่สำเร็จ: ${e?.message || 'ไม่ทราบสาเหตุ'}`);
                     }
