@@ -5,6 +5,8 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+// Hard kill switch: prevent any text from going to Gemini (DM too)
+const ENABLE_GEMINI_DM = /^(1|true|yes)$/i.test(String(process.env.ENABLE_GEMINI_DM || '0'));
 // Build/version info for debugging deployments
 let BUILD_COMMIT = process.env.SOURCE_COMMIT || process.env.HEROKU_SLUG_COMMIT || '';
 if (!BUILD_COMMIT) {
@@ -161,29 +163,52 @@ async function sendImageToGemini(imageBuffer, contentType, userHintText = '') {
     }
 }
 
-// Generate an image using Gemini 2.5 Flash Image Preview, return Buffer and contentType
+// Generate an image using Gemini; robust model + response handling
 async function generateImageWithGemini(prompt) {
-    try {
-        const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent';
-        const body = {
-            contents: [{ parts: [{ text: prompt }]}],
-        };
-        const headers = {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': GEMINI_API_KEY,
-        };
-        const response = await axios.post(url, body, { headers });
-        const parts = response.data?.candidates?.[0]?.content?.parts || [];
-        const img = parts.find(p => p.inlineData?.data && (p.inlineData?.mimeType?.startsWith?.('image/') || true));
-        if (!img) throw new Error('No image data returned');
-        const data = img.inlineData.data;
-        const mimeType = img.inlineData.mimeType || 'image/png';
-        const buffer = Buffer.from(data, 'base64');
-        return { buffer, contentType: mimeType };
-    } catch (error) {
-        console.error('Error generating image with Gemini:', error.response?.data || error.message);
-        throw new Error('ไม่สามารถสร้างรูปภาพได้ โปรดตรวจสอบสิทธิ์ของ API และโมเดล');
+    const tryModels = [
+        'gemini-2.5-flash-image-preview',
+        'gemini-2.0-flash-exp',
+        'gemini-1.5-flash',
+    ];
+    const tryOnce = async (model) => {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        const body = { contents: [{ parts: [{ text: prompt }]}] };
+        const headers = { 'Content-Type': 'application/json' };
+        const resp = await axios.post(url, body, { headers });
+        const candidates = resp.data?.candidates || [];
+        for (const cand of candidates) {
+            const parts = cand?.content?.parts || [];
+            for (const p of parts) {
+                const inline = p.inlineData;
+                if (inline?.data) {
+                    const mimeType = inline.mimeType || 'image/png';
+                    return { buffer: Buffer.from(inline.data, 'base64'), contentType: mimeType };
+                }
+                // Some models may return base64 as text with a data URL; handle it
+                if (typeof p.text === 'string' && p.text.startsWith('data:image/')) {
+                    const m = p.text.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+                    if (m) return { buffer: Buffer.from(m[2], 'base64'), contentType: m[1] };
+                }
+            }
+        }
+        // If promptFeedback indicates blocked, throw a readable error
+        const feedback = resp.data?.promptFeedback;
+        if (feedback?.blockReason) {
+            throw new Error(`blocked: ${feedback.blockReason}`);
+        }
+        throw new Error('no_image_data');
+    };
+    let lastErr;
+    for (const m of tryModels) {
+        try {
+            return await tryOnce(m);
+        } catch (e) {
+            lastErr = e;
+            console.error(`[image] ${m} failed:`, e?.response?.data || e?.message || e);
+            continue;
+        }
     }
+    throw new Error(`ไม่สามารถสร้างรูปภาพได้ (${lastErr?.message || 'unknown'})`);
 }
 
 // In-memory store for generated images
@@ -679,6 +704,11 @@ app.post('/webhook', async (req, res) => {
                 // In groups/rooms, disable Gemini fallback entirely to avoid chatty replies.
                 if (inGroupLike) {
                     console.log('Skip Gemini: group/room fallback disabled');
+                    continue;
+                }
+
+                if (!ENABLE_GEMINI_DM) {
+                    console.log('Skip Gemini: DM fallback disabled by flag');
                     continue;
                 }
 
