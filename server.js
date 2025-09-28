@@ -421,10 +421,10 @@ app.post('/webhook', async (req, res) => {
                             meta: { messageId: event.message?.id || null },
                         });
                         console.log(`[TODO] sheets add ok: id=${item?.id || '?'} text="${item?.text || ''}"`);
-                        await sendLineMessage(replyToken, `เพิ่มข้อมูลเรียบร้อย: ${item.text}`);
+                        // เงียบ: ไม่ตอบกลับ LINE ตามคำขอผู้ใช้
                     } catch (e) {
                         console.error('[TODO] sheets add error:', e?.response?.data || e?.message || e);
-                        await sendLineMessage(replyToken, `เพิ่ม To Do ไม่สำเร็จ: ${e?.message || 'ไม่ทราบสาเหตุ'}`);
+                        // เงียบ: ไม่ส่งข้อความ error กลับไปที่ LINE
                     }
                     continue;
                 }
