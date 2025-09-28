@@ -19,6 +19,16 @@ async function init() {
     return;
   }
   await liff.init({ liffId });
+  // Allow only inside LINE client (LIFF). If opened directly, show guidance and stop.
+  if (!liff.isInClient?.() && !liff.getContext?.()) {
+    const ctxEl = document.getElementById('ctx');
+    ctxEl.textContent = 'โปรดเปิดหน้าจอนี้ผ่าน LINE (LIFF) เท่านั้น';
+    const form = document.getElementById('form');
+    if (form) form.style.display = 'none';
+    const listEl = document.getElementById('list');
+    if (listEl) listEl.innerHTML = '<li class="muted">(ปิดการใช้งานนอก LIFF)</li>';
+    return;
+  }
   const ctx = liff.getContext();
   const chatKey = buildChatKey(ctx);
   const ctxEl = document.getElementById('ctx');
