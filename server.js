@@ -279,6 +279,15 @@ function formatNumber(n) {
     return new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 }).format(n || 0);
 }
 
+// Build chatKey from LINE source (for LIFF deep-link)
+function chatKeyFromSourceSimple(source) {
+    if (!source) return 'unknown';
+    if (source.groupId) return `group:${source.groupId}`;
+    if (source.roomId) return `room:${source.roomId}`;
+    if (source.userId) return `user:${source.userId}`;
+    return 'unknown';
+}
+
 // Search with Brave via MCP (falls back to direct HTTP on failure)
 async function searchWithBrave(query) {
     // Try MCP first
@@ -479,6 +488,45 @@ app.post('/webhook', async (req, res) => {
                     } catch (e) {
                         console.error('[TODO] sheets add error:', e?.response?.data || e?.message || e);
                         // เงียบ: ไม่ส่งข้อความ error กลับไปที่ LINE
+                    }
+                    continue;
+                }
+
+                // To-do list (Flex): /list to do list [N]
+                const listTodoFlexMatch = textNorm.match(/^\/list\s+to\s*do\s+list(?:\s+(\d+))?/i);
+                if (listTodoFlexMatch) {
+                    const n = parseInt(listTodoFlexMatch[1] || '10', 10);
+                    const liffId = process.env.LIFF_TODO_ID || process.env.LIFF_ID;
+                    if (!liffId) {
+                        await sendLineMessage(replyToken, 'ยังไม่ได้ตั้งค่า LIFF_TODO_ID');
+                        continue;
+                    }
+                    try {
+                        const items = await todoProvider.listTodosForSource(event.source, { limit: isNaN(n) ? 10 : n });
+                        const chatKey = chatKeyFromSourceSimple(event.source);
+                        const openUrl = `https://liff.line.me/${liffId}?chatKey=${encodeURIComponent(chatKey)}`;
+                        const contents = {
+                            type: 'bubble',
+                            header: { type: 'box', layout: 'vertical', contents: [ { type: 'text', text: 'To Do ล่าสุด', weight: 'bold', size: 'md' } ] },
+                            body: {
+                                type: 'box', layout: 'vertical', spacing: 'sm', contents: (
+                                    (items && items.length ? items : [{ text: 'ยังไม่มีรายการ' }]).map((it, i) => ({
+                                        type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+                                            { type: 'text', text: `${i + 1}.`, size: 'sm', color: '#888888', flex: 0 },
+                                            { type: 'text', text: String(it.text || ''), size: 'sm', wrap: true }
+                                        ]
+                                    }))
+                                )
+                            },
+                            footer: {
+                                type: 'box', layout: 'vertical', contents: [
+                                    { type: 'button', style: 'primary', color: '#06c755', action: { type: 'uri', label: 'เปิด LIFF', uri: openUrl } }
+                                ]
+                            }
+                        };
+                        await sendLineMessages(replyToken, [{ type: 'flex', altText: 'To Do ล่าสุด', contents }]);
+                    } catch (e) {
+                        await sendLineMessage(replyToken, `ไม่สามารถแสดงรายการ To Do ได้: ${e?.message || 'ไม่ทราบสาเหตุ'}`);
                     }
                     continue;
                 }
