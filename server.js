@@ -5,6 +5,11 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+// Build/version info for debugging deployments
+let BUILD_COMMIT = process.env.SOURCE_COMMIT || process.env.HEROKU_SLUG_COMMIT || '';
+if (!BUILD_COMMIT) {
+    try { BUILD_COMMIT = require('child_process').execSync('git rev-parse --short HEAD').toString().trim(); } catch (_) {}
+}
 
 // Middleware
 app.use(express.json());
@@ -409,13 +414,16 @@ app.post('/webhook', async (req, res) => {
                         continue;
                     }
                     try {
+                        console.log(`[TODO] sheets add start: text="${taskText}" backend=${TODO_BACKEND}`);
                         const item = await todoProvider.addTodoForSource(event.source, {
                             text: taskText,
                             userId: event.source?.userId || null,
                             meta: { messageId: event.message?.id || null },
                         });
+                        console.log(`[TODO] sheets add ok: id=${item?.id || '?'} text="${item?.text || ''}"`);
                         await sendLineMessage(replyToken, `เพิ่มข้อมูลเรียบร้อย: ${item.text}`);
                     } catch (e) {
+                        console.error('[TODO] sheets add error:', e?.response?.data || e?.message || e);
                         await sendLineMessage(replyToken, `เพิ่ม To Do ไม่สำเร็จ: ${e?.message || 'ไม่ทราบสาเหตุ'}`);
                     }
                     continue;
@@ -682,6 +690,11 @@ app.get('/health', (req, res) => {
 // LIFF config endpoint (provides LIFF ID to frontend)
 app.get('/liff/config', (req, res) => {
     res.json({ liffId: process.env.LIFF_TODO_ID || process.env.LIFF_ID || '' });
+});
+
+// Version endpoint for deployment verification
+app.get('/version', (req, res) => {
+    res.json({ commit: BUILD_COMMIT || 'unknown', backend: TODO_BACKEND, time: new Date().toISOString() });
 });
 
 // Simple ToDo API for LIFF frontend (Google Sheets backend recommended)
